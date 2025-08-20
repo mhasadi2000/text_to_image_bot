@@ -5,30 +5,16 @@ services:
     build: .
     container_name: telegram-text-image-bot
     restart: unless-stopped
-    environment:
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
     env_file:
       - .env
     volumes:
       # Optional: Mount a volume for persistent logs
       - ./logs:/app/logs
-    networks:
-      - bot-network
-    # Resource limits (optional)
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-        reservations:
-          memory: 256M
-          cpus: '0.25'
+    # Memory limit (optional, comment out if not supported)
+    mem_limit: 512m
+    # CPU limit (optional, comment out if not supported)  
+    cpus: 0.5
 
-networks:
-  bot-network:
-    driver: bridge
-
-# Optional: Add a volume for logs
+# Create logs directory if it doesn't exist
 volumes:
   logs:
-    driver: local

@@ -30,7 +30,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY simple_bot.py .
 COPY fonts/ ./fonts/
 COPY image/ ./image/
-COPY .env .
 
 # Create output directory for generated images
 RUN mkdir -p /app/output
@@ -44,7 +43,7 @@ EXPOSE 8000
 
 # Health check to ensure bot is running
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('https://api.telegram.org/bot' + open('.env').read().split('=')[1].strip() + '/getMe', timeout=5)" || exit 1
+    CMD python -c "import os, requests; requests.get('https://api.telegram.org/bot' + os.getenv('TELEGRAM_BOT_TOKEN', '') + '/getMe', timeout=5) if os.getenv('TELEGRAM_BOT_TOKEN') else exit(1)" || exit 1
 
 # Run the bot
 CMD ["python", "simple_bot.py"]
