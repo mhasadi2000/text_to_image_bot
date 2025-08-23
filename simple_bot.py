@@ -7,6 +7,7 @@ import logging
 import random
 import requests
 import dotenv
+import jdatetime
 from PIL import Image, ImageDraw, ImageFont
 import arabic_reshaper
 from bidi.algorithm import get_display
@@ -31,9 +32,27 @@ MAX_WORDS = 350  # Maximum number of words allowed
 # Padding will be calculated as 10% of image dimensions with priority to top and right
 # Use the Vazirmatn font for Arabic/Persian characters
 FONT_PATH = "fonts/Vazirmatn-Regular.ttf"  # Persian font
+DATE_FONT_SIZE = 50  # Font size for Jalali date
+FIRST_LINE_SIZE_INCREASE = 1.2  # Increase first line font size by 20%
+
+# Persian/Arabic numerals mapping
+PERSIAN_DIGITS = {'0': '۰', '1': '۱', '2': '۲', '3': '۳', '4': '۴', '5': '۵', '6': '۶', '7': '۷', '8': '۸', '9': '۹'}
 
 # Telegram Bot API URL
 API_BASE_URL = "https://api.telegram.org/bot"
+
+def convert_to_persian_numerals(text):
+    """Convert Western numerals in text to Persian/Arabic numerals.
+    
+    Args:
+        text: String containing Western numerals
+        
+    Returns:
+        String with Western numerals replaced by Persian/Arabic equivalents
+    """
+    for western, persian in PERSIAN_DIGITS.items():
+        text = text.replace(western, persian)
+    return text
 
 def justify_line(words, font, target_width, draw_obj):
     """Justify a line by distributing extra spaces between words.
@@ -254,6 +273,14 @@ def create_text_image(text: str) -> list:
         # Create a draw object for the actual image
         img_draw = ImageDraw.Draw(img)
         
+        # Add Jalali date to top left corner with Persian numerals
+        today = jdatetime.datetime.now().strftime("%Y/%m/%d")
+        today = convert_to_persian_numerals(today)  # Convert to Persian numerals
+        date_font = ImageFont.truetype(FONT_PATH, DATE_FONT_SIZE)
+        date_text = get_display(arabic_reshaper.reshape(today))
+        date_width = img_draw.textlength(date_text, font=date_font)
+        img_draw.text((left_padding, int(top_padding * 0.3)), date_text, font=date_font, fill=(0, 0, 0))
+        
         # Draw each line of text justified within the padding
         current_y = start_y
         usable_width = width - (right_padding + left_padding)
@@ -296,8 +323,23 @@ def create_text_image(text: str) -> list:
                 if x_position < left_padding:
                     x_position = left_padding
             
-            # Draw the text on the actual image
-            img_draw.text((x_position, current_y), bidi_line, font=font, fill=(0, 0, 0))
+            # Draw the text on the actual image - make first line bolder by using larger font size
+            if img_index == 0 and line_idx == 0:
+                # Make first line bolder by using larger font size
+                larger_font_size = int(font.size * FIRST_LINE_SIZE_INCREASE)
+                bold_font = ImageFont.truetype(FONT_PATH, larger_font_size)
+                
+                # Recalculate position to maintain consistent right padding
+                bold_line_width = draw.textlength(bidi_line, font=bold_font)
+                bold_x_position = width - right_padding - bold_line_width
+                
+                # Ensure text stays within the justified boundaries
+                if bold_x_position < left_padding:
+                    bold_x_position = left_padding
+                    
+                img_draw.text((bold_x_position, current_y), bidi_line, font=bold_font, fill=(0, 0, 0))
+            else:
+                img_draw.text((x_position, current_y), bidi_line, font=font, fill=(0, 0, 0))
             current_y += line_height
         
         # Save this image
