@@ -27,12 +27,18 @@ DEFAULT_FONT_SIZE = 90  # Increased default font size
 MIN_FONT_SIZE = 80  # Increased minimum font size as requested
 MAX_FONT_SIZE = 110  # Increased maximum font size as requested
 MAX_LINES_PER_IMAGE = 25  # Reduced to account for larger font size
-MAX_IMAGES = 2  # Maximum number of images to generate
-MAX_WORDS = 350  # Maximum number of words allowed
+MAX_IMAGES = 3  # Maximum number of images to generate
+MAX_WORDS = 400  # Maximum number of words allowed
 # Padding will be calculated as 10% of image dimensions with priority to top and right
 # Use the Vazirmatn font for Arabic/Persian characters
 FONT_PATH = "fonts/Vazirmatn-Regular.ttf"  # Persian font
-DATE_FONT_SIZE = 50  # Font size for Jalali date
+FALLBACK_FONT_PATHS = [
+    "fonts/Vazirmatn-Regular.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",  # Common Linux fallback
+    "/System/Library/Fonts/Arial.ttf",  # macOS fallback
+    "C:/Windows/Fonts/arial.ttf"  # Windows fallback
+]
+DATE_FONT_SIZE = 60  # Font size for Jalali date (increased)
 FIRST_LINE_SIZE_INCREASE = 1.2  # Increase first line font size by 20%
 
 # Persian/Arabic numerals mapping
@@ -40,6 +46,30 @@ PERSIAN_DIGITS = {'0': '۰', '1': '۱', '2': '۲', '3': '۳', '4': '۴', '5': '�
 
 # Telegram Bot API URL
 API_BASE_URL = "https://api.telegram.org/bot"
+
+def get_font(size):
+    """Get a font with fallback options.
+    
+    Args:
+        size: Font size
+        
+    Returns:
+        ImageFont object
+    """
+    for font_path in FALLBACK_FONT_PATHS:
+        try:
+            if os.path.exists(font_path):
+                return ImageFont.truetype(font_path, size)
+        except Exception as e:
+            logger.warning(f"Could not load font {font_path}: {e}")
+            continue
+    
+    # Final fallback to default font
+    try:
+        return ImageFont.load_default()
+    except Exception as e:
+        logger.error(f"Could not load any font: {e}")
+        raise
 
 def convert_to_persian_numerals(text):
     """Convert Western numerals in text to Persian/Arabic numerals.
@@ -214,7 +244,7 @@ def create_text_image(text: str) -> list:
     # Find optimal font size
     wrapped_lines = []
     while font_size > MIN_FONT_SIZE:
-        font = ImageFont.truetype(FONT_PATH, font_size)
+        font = get_font(font_size)
         wrapped_lines, total_text_height, line_height, line_info = get_wrapped_text_and_height(text, font, max_text_width)
         
         # Check if text can fit in MAX_IMAGES images
@@ -228,7 +258,7 @@ def create_text_image(text: str) -> list:
     
     # If even with minimum font size, text doesn't fit in MAX_IMAGES images, return error
     if font_size <= MIN_FONT_SIZE:
-        font = ImageFont.truetype(FONT_PATH, MIN_FONT_SIZE)
+        font = get_font(MIN_FONT_SIZE)
         wrapped_lines, total_text_height, line_height, line_info = get_wrapped_text_and_height(text, font, max_text_width)
         max_text_height_per_image = height - (top_padding + bottom_padding)
         total_images_needed = (total_text_height + max_text_height_per_image - 1) // max_text_height_per_image
@@ -276,10 +306,10 @@ def create_text_image(text: str) -> list:
         # Add Jalali date to top left corner with Persian numerals
         today = jdatetime.datetime.now().strftime("%Y/%m/%d")
         today = convert_to_persian_numerals(today)  # Convert to Persian numerals
-        date_font = ImageFont.truetype(FONT_PATH, DATE_FONT_SIZE)
+        date_font = get_font(DATE_FONT_SIZE)
         date_text = get_display(arabic_reshaper.reshape(today))
         date_width = img_draw.textlength(date_text, font=date_font)
-        img_draw.text((left_padding, int(top_padding * 0.3)), date_text, font=date_font, fill=(0, 0, 0))
+        img_draw.text((left_padding, int(top_padding * 0.5)), date_text, font=date_font, fill=(0, 0, 0))
         
         # Draw each line of text justified within the padding
         current_y = start_y
@@ -327,7 +357,7 @@ def create_text_image(text: str) -> list:
             if img_index == 0 and line_idx == 0:
                 # Make first line bolder by using larger font size
                 larger_font_size = int(font.size * FIRST_LINE_SIZE_INCREASE)
-                bold_font = ImageFont.truetype(FONT_PATH, larger_font_size)
+                bold_font = get_font(larger_font_size)
                 
                 # Recalculate position to maintain consistent right padding
                 bold_line_width = draw.textlength(bidi_line, font=bold_font)
