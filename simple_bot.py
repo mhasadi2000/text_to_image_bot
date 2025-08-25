@@ -102,13 +102,9 @@ def process_arabic_text(text):
         Text processed for RTL sentence flow
     """
     try:
-        from bidi.algorithm import get_display
         bidi_text = get_display(text)
         logger.info(f"BiDi processing: '{text}' -> '{bidi_text}'")
         return bidi_text
-    except ImportError:
-        logger.error("python-bidi not available, using fallback")
-        return text
     except Exception as e:
         logger.error(f"Error processing Arabic text: {e}")
         return text
@@ -361,12 +357,8 @@ def create_text_image(text: str) -> list:
             
             # PROPER RTL PROCESSING: Use BiDi algorithm for sentence flow
             try:
-                from bidi.algorithm import get_display
                 bidi_line = get_display(line)
                 logger.info(f"BiDi processing: '{line}' -> '{bidi_line}'")
-            except ImportError:
-                logger.error("python-bidi not available, using fallback")
-                bidi_line = line
             except Exception as e:
                 logger.error(f"BiDi processing failed: {e}")
                 bidi_line = line
