@@ -19,6 +19,9 @@ RUN apt-get update && apt-get install -y \
     libfribidi-dev \
     libxcb1-dev \
     fonts-dejavu-core \
+    fonts-liberation \
+    fonts-noto-core \
+    fonts-noto-ui-core \
     fontconfig \
     && rm -rf /var/lib/apt/lists/*
 

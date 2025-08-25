@@ -34,7 +34,9 @@ MAX_WORDS = 400  # Maximum number of words allowed
 FONT_PATH = "fonts/Vazirmatn-Regular.ttf"  # Persian font
 FALLBACK_FONT_PATHS = [
     "fonts/Vazirmatn-Regular.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",  # Linux Arabic support
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",  # Common Linux fallback
+    "/usr/share/fonts/TTF/DejaVuSans.ttf",  # Alternative Linux path
     "/System/Library/Fonts/Arial.ttf",  # macOS fallback
     "C:/Windows/Fonts/arial.ttf"  # Windows fallback
 ]
@@ -48,7 +50,7 @@ PERSIAN_DIGITS = {'0': '۰', '1': '۱', '2': '۲', '3': '۳', '4': '۴', '5': '�
 API_BASE_URL = "https://api.telegram.org/bot"
 
 def get_font(size):
-    """Get a font with fallback options.
+    """Get a font with fallback options, prioritizing Arabic/Persian support.
     
     Args:
         size: Font size
@@ -59,13 +61,16 @@ def get_font(size):
     for font_path in FALLBACK_FONT_PATHS:
         try:
             if os.path.exists(font_path):
-                return ImageFont.truetype(font_path, size)
+                font = ImageFont.truetype(font_path, size)
+                logger.info(f"Successfully loaded font: {font_path}")
+                return font
         except Exception as e:
             logger.warning(f"Could not load font {font_path}: {e}")
             continue
     
     # Final fallback to default font
     try:
+        logger.warning("Using default font - Arabic/Persian text may not render correctly")
         return ImageFont.load_default()
     except Exception as e:
         logger.error(f"Could not load any font: {e}")
@@ -83,6 +88,26 @@ def convert_to_persian_numerals(text):
     for western, persian in PERSIAN_DIGITS.items():
         text = text.replace(western, persian)
     return text
+
+def process_arabic_text(text):
+    """Process Arabic/Persian text with proper reshaping and BiDi handling.
+    
+    Args:
+        text: Raw Arabic/Persian text
+        
+    Returns:
+        Properly processed text for rendering
+    """
+    try:
+        # First reshape the Arabic text to connect letters properly
+        reshaped_text = arabic_reshaper.reshape(text)
+        # Then apply BiDi algorithm for proper right-to-left display
+        bidi_text = get_display(reshaped_text)
+        return bidi_text
+    except Exception as e:
+        logger.error(f"Error processing Arabic text: {e}")
+        # Fallback: return original text
+        return text
 
 def justify_line(words, font, target_width, draw_obj):
     """Justify a line by distributing extra spaces between words.
@@ -307,7 +332,7 @@ def create_text_image(text: str) -> list:
         today = jdatetime.datetime.now().strftime("%Y/%m/%d")
         today = convert_to_persian_numerals(today)  # Convert to Persian numerals
         date_font = get_font(DATE_FONT_SIZE)
-        date_text = get_display(arabic_reshaper.reshape(today))
+        date_text = process_arabic_text(today)
         date_width = img_draw.textlength(date_text, font=date_font)
         img_draw.text((left_padding, int(top_padding * 0.5)), date_text, font=date_font, fill=(0, 0, 0))
         
@@ -333,15 +358,13 @@ def create_text_image(text: str) -> list:
             if not current_line_info.get('is_last_in_paragraph', True) and len(current_line_info.get('words', [])) > 1:
                 # Justify the line by distributing extra spaces
                 justified_line = justify_line(current_line_info['words'], font, usable_width, img_draw)
-                reshaped_line = arabic_reshaper.reshape(justified_line)
-                bidi_line = get_display(reshaped_line)
+                bidi_line = process_arabic_text(justified_line)
                 
                 # For justified text, start from left padding
                 x_position = left_padding
             else:
                 # For last lines of paragraphs, use normal right alignment
-                reshaped_line = arabic_reshaper.reshape(line)
-                bidi_line = get_display(reshaped_line)
+                bidi_line = process_arabic_text(line)
                 
                 # Get the width of the line
                 line_width = draw.textlength(bidi_line, font=font)
