@@ -355,27 +355,25 @@ def create_text_image(text: str) -> list:
             # Get line info for justification
             current_line_info = line_info[global_line_idx] if global_line_idx < len(line_info) else {'is_empty': False, 'is_last_in_paragraph': True, 'words': line.split()}
             
+            # Process Arabic text first, then handle positioning
+            bidi_line = process_arabic_text(line)
+            
             # Apply justification only to full lines (not last line of paragraph)
             if not current_line_info.get('is_last_in_paragraph', True) and len(current_line_info.get('words', [])) > 1:
-                # Justify the line by distributing extra spaces
-                justified_line = justify_line(current_line_info['words'], font, usable_width, img_draw)
-                bidi_line = process_arabic_text(justified_line)
-                
-                # For justified text, start from left padding
+                # For justified text in RTL, still align to right but distribute spaces
+                # Note: We skip justification for Arabic text to preserve RTL direction
+                pass
+            
+            # Always use right alignment for RTL text
+            # Get the width of the line
+            line_width = img_draw.textlength(bidi_line, font=font)
+            
+            # For right-to-left text, we start from the right edge minus padding
+            x_position = width - right_padding - line_width
+            
+            # Ensure text stays within the justified boundaries
+            if x_position < left_padding:
                 x_position = left_padding
-            else:
-                # For last lines of paragraphs, use normal right alignment
-                bidi_line = process_arabic_text(line)
-                
-                # Get the width of the line
-                line_width = img_draw.textlength(bidi_line, font=font)
-                
-                # For right-to-left text, we start from the right edge minus padding
-                x_position = width - right_padding - line_width
-                
-                # Ensure text stays within the justified boundaries
-                if x_position < left_padding:
-                    x_position = left_padding
             
             # Draw the text on the actual image - make first line bolder by using larger font size
             if img_index == 0 and line_idx == 0:
