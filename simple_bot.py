@@ -102,9 +102,19 @@ def process_arabic_text(text):
         Text processed for RTL sentence flow
     """
     try:
-        bidi_text = get_display(text)
-        logger.info(f"BiDi processing: '{text}' -> '{bidi_text}'")
-        return bidi_text
+        # Split text into sentences and reverse their order for RTL reading
+        sentences = text.split('.')
+        # Remove empty strings and strip whitespace
+        sentences = [s.strip() for s in sentences if s.strip()]
+        # Reverse sentence order for RTL flow
+        reversed_sentences = sentences[::-1]
+        # Join back with periods
+        rtl_text = '. '.join(reversed_sentences)
+        if text.endswith('.'):
+            rtl_text += '.'
+        
+        logger.info(f"RTL sentence processing: '{text}' -> '{rtl_text}'")
+        return rtl_text
     except Exception as e:
         logger.error(f"Error processing Arabic text: {e}")
         return text
@@ -355,12 +365,18 @@ def create_text_image(text: str) -> list:
             # Get line info for justification
             current_line_info = line_info[global_line_idx] if global_line_idx < len(line_info) else {'is_empty': False, 'is_last_in_paragraph': True, 'words': line.split()}
             
-            # PROPER RTL PROCESSING: Use BiDi algorithm for sentence flow
+            # PROPER RTL PROCESSING: Manual sentence reversal for RTL flow
             try:
-                bidi_line = get_display(line)
-                logger.info(f"BiDi processing: '{line}' -> '{bidi_line}'")
+                # Split line into sentences and reverse their order
+                sentences = line.split('.')
+                sentences = [s.strip() for s in sentences if s.strip()]
+                reversed_sentences = sentences[::-1]
+                bidi_line = '. '.join(reversed_sentences)
+                if line.endswith('.'):
+                    bidi_line += '.'
+                logger.info(f"RTL sentence processing: '{line}' -> '{bidi_line}'")
             except Exception as e:
-                logger.error(f"BiDi processing failed: {e}")
+                logger.error(f"RTL processing failed: {e}")
                 bidi_line = line
             
             # Apply justification only to full lines (not last line of paragraph)
