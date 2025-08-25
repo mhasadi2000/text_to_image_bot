@@ -103,6 +103,7 @@ def process_arabic_text(text):
         reshaped_text = arabic_reshaper.reshape(text)
         # Then apply BiDi algorithm for proper right-to-left display
         bidi_text = get_display(reshaped_text)
+        logger.info(f"Arabic processing: '{text}' -> '{bidi_text}'")
         return bidi_text
     except Exception as e:
         logger.error(f"Error processing Arabic text: {e}")
@@ -355,8 +356,16 @@ def create_text_image(text: str) -> list:
             # Get line info for justification
             current_line_info = line_info[global_line_idx] if global_line_idx < len(line_info) else {'is_empty': False, 'is_last_in_paragraph': True, 'words': line.split()}
             
-            # Process Arabic text first, then handle positioning
-            bidi_line = process_arabic_text(line)
+            # DIRECT FIX: Apply BiDi processing directly without any interference
+            try:
+                import arabic_reshaper
+                from bidi.algorithm import get_display
+                reshaped = arabic_reshaper.reshape(line)
+                bidi_line = get_display(reshaped)
+                logger.info(f"Direct BiDi: '{line}' -> '{bidi_line}'")
+            except Exception as e:
+                logger.error(f"Direct BiDi failed: {e}")
+                bidi_line = line
             
             # Apply justification only to full lines (not last line of paragraph)
             if not current_line_info.get('is_last_in_paragraph', True) and len(current_line_info.get('words', [])) > 1:
