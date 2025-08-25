@@ -93,19 +93,21 @@ def convert_to_persian_numerals(text):
     return text
 
 def process_arabic_text(text):
-    """Process Arabic/Persian text with MINIMAL processing to preserve readability.
+    """Process Arabic/Persian text with ONLY BiDi reversal - no reshaping.
     
     Args:
         text: Raw Arabic/Persian text
         
     Returns:
-        Text processed for RTL display
+        Text with reversed word order for RTL display
     """
     try:
-        # SIMPLIFIED: Only apply BiDi without complex reshaping that may break font rendering
-        bidi_text = get_display(text)
-        logger.info(f"Simplified Arabic processing: '{text}' -> '{bidi_text}'")
-        return bidi_text
+        # ONLY reverse word order, don't reshape letters
+        words = text.split()
+        reversed_words = words[::-1]
+        reversed_text = ' '.join(reversed_words)
+        logger.info(f"Word-only reversal: '{text}' -> '{reversed_text}'")
+        return reversed_text
     except Exception as e:
         logger.error(f"Error processing Arabic text: {e}")
         # Fallback: return original text
@@ -357,12 +359,14 @@ def create_text_image(text: str) -> list:
             # Get line info for justification
             current_line_info = line_info[global_line_idx] if global_line_idx < len(line_info) else {'is_empty': False, 'is_last_in_paragraph': True, 'words': line.split()}
             
-            # SIMPLIFIED FIX: Only reverse text direction without complex reshaping
+            # WORD-ONLY REVERSAL: Just reverse word order for RTL
             try:
-                bidi_line = get_display(line)
-                logger.info(f"Simple BiDi: '{line}' -> '{bidi_line}'")
+                words = line.split()
+                reversed_words = words[::-1]
+                bidi_line = ' '.join(reversed_words)
+                logger.info(f"Word reversal: '{line}' -> '{bidi_line}'")
             except Exception as e:
-                logger.error(f"Simple BiDi failed: {e}")
+                logger.error(f"Word reversal failed: {e}")
                 bidi_line = line
             
             # Apply justification only to full lines (not last line of paragraph)
