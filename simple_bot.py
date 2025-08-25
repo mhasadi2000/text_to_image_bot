@@ -93,21 +93,20 @@ def convert_to_persian_numerals(text):
     return text
 
 def process_arabic_text(text):
-    """Process Arabic/Persian text with ONLY BiDi reversal - no reshaping.
+    """Process Arabic/Persian text for proper RTL display.
     
     Args:
         text: Raw Arabic/Persian text
         
     Returns:
-        Text with reversed word order for RTL display
+        Text processed for RTL sentence flow
     """
     try:
-        # ONLY reverse word order, don't reshape letters
-        words = text.split()
-        reversed_words = words[::-1]
-        reversed_text = ' '.join(reversed_words)
-        logger.info(f"Word-only reversal: '{text}' -> '{reversed_text}'")
-        return reversed_text
+        # Use python-bidi to get proper RTL display
+        from bidi.algorithm import get_display
+        bidi_text = get_display(text)
+        logger.info(f"BiDi processing: '{text}' -> '{bidi_text}'")
+        return bidi_text
     except Exception as e:
         logger.error(f"Error processing Arabic text: {e}")
         # Fallback: return original text
@@ -359,14 +358,13 @@ def create_text_image(text: str) -> list:
             # Get line info for justification
             current_line_info = line_info[global_line_idx] if global_line_idx < len(line_info) else {'is_empty': False, 'is_last_in_paragraph': True, 'words': line.split()}
             
-            # WORD-ONLY REVERSAL: Just reverse word order for RTL
+            # PROPER RTL PROCESSING: Use BiDi algorithm for sentence flow
             try:
-                words = line.split()
-                reversed_words = words[::-1]
-                bidi_line = ' '.join(reversed_words)
-                logger.info(f"Word reversal: '{line}' -> '{bidi_line}'")
+                from bidi.algorithm import get_display
+                bidi_line = get_display(line)
+                logger.info(f"BiDi processing: '{line}' -> '{bidi_line}'")
             except Exception as e:
-                logger.error(f"Word reversal failed: {e}")
+                logger.error(f"BiDi processing failed: {e}")
                 bidi_line = line
             
             # Apply justification only to full lines (not last line of paragraph)
