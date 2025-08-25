@@ -206,7 +206,7 @@ def create_text_image(text: str) -> list:
         # For longer text, use smaller font
         font_size = MIN_FONT_SIZE  # 10pt for longer texts
     
-    font = ImageFont.truetype(FONT_PATH, font_size)
+    font = get_font(font_size)
     
     # Calculate padding as 10% of image dimensions
     right_padding = int(width * 0.1)  # 10% of width for right padding
@@ -236,8 +236,9 @@ def create_text_image(text: str) -> list:
             for word in words[1:]:
                 # Try adding the word to the current line
                 test_line = ' '.join(current_line_words + [word])
-                # For RTL text, we need to measure each line
-                test_width = draw.textlength(get_display(arabic_reshaper.reshape(test_line)), font)
+                # For RTL text, we need to measure each line with proper Arabic processing
+                processed_test_line = process_arabic_text(test_line)
+                test_width = draw.textlength(processed_test_line, font)
                 
                 if test_width <= max_width:
                     current_line_words.append(word)
@@ -367,7 +368,7 @@ def create_text_image(text: str) -> list:
                 bidi_line = process_arabic_text(line)
                 
                 # Get the width of the line
-                line_width = draw.textlength(bidi_line, font=font)
+                line_width = img_draw.textlength(bidi_line, font=font)
                 
                 # For right-to-left text, we start from the right edge minus padding
                 x_position = width - right_padding - line_width
@@ -383,7 +384,7 @@ def create_text_image(text: str) -> list:
                 bold_font = get_font(larger_font_size)
                 
                 # Recalculate position to maintain consistent right padding
-                bold_line_width = draw.textlength(bidi_line, font=bold_font)
+                bold_line_width = img_draw.textlength(bidi_line, font=bold_font)
                 bold_x_position = width - right_padding - bold_line_width
                 
                 # Ensure text stays within the justified boundaries
