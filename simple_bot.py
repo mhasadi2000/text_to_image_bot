@@ -34,6 +34,9 @@ MAX_WORDS = 400  # Maximum number of words allowed
 FONT_PATH = "fonts/Vazirmatn-Regular.ttf"  # Persian font
 FALLBACK_FONT_PATHS = [
     "fonts/Vazirmatn-Regular.ttf",
+    "/usr/share/fonts/truetype/kacst/KacstBook.ttf",  # Arabic font
+    "/usr/share/fonts/truetype/kacst-one/KacstOne.ttf",  # Arabic font
+    "/usr/share/fonts/truetype/farsiweb/nazli.ttf",  # Persian font
     "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",  # Linux Arabic support
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",  # Common Linux fallback
     "/usr/share/fonts/TTF/DejaVuSans.ttf",  # Alternative Linux path
@@ -90,20 +93,18 @@ def convert_to_persian_numerals(text):
     return text
 
 def process_arabic_text(text):
-    """Process Arabic/Persian text with proper reshaping and BiDi handling.
+    """Process Arabic/Persian text with MINIMAL processing to preserve readability.
     
     Args:
         text: Raw Arabic/Persian text
         
     Returns:
-        Properly processed text for rendering
+        Text processed for RTL display
     """
     try:
-        # First reshape the Arabic text to connect letters properly
-        reshaped_text = arabic_reshaper.reshape(text)
-        # Then apply BiDi algorithm for proper right-to-left display
-        bidi_text = get_display(reshaped_text)
-        logger.info(f"Arabic processing: '{text}' -> '{bidi_text}'")
+        # SIMPLIFIED: Only apply BiDi without complex reshaping that may break font rendering
+        bidi_text = get_display(text)
+        logger.info(f"Simplified Arabic processing: '{text}' -> '{bidi_text}'")
         return bidi_text
     except Exception as e:
         logger.error(f"Error processing Arabic text: {e}")
@@ -356,13 +357,12 @@ def create_text_image(text: str) -> list:
             # Get line info for justification
             current_line_info = line_info[global_line_idx] if global_line_idx < len(line_info) else {'is_empty': False, 'is_last_in_paragraph': True, 'words': line.split()}
             
-            # DIRECT FIX: Apply BiDi processing directly without any interference
+            # SIMPLIFIED FIX: Only reverse text direction without complex reshaping
             try:
-                reshaped = arabic_reshaper.reshape(line)
-                bidi_line = get_display(reshaped)
-                logger.info(f"Direct BiDi: '{line}' -> '{bidi_line}'")
+                bidi_line = get_display(line)
+                logger.info(f"Simple BiDi: '{line}' -> '{bidi_line}'")
             except Exception as e:
-                logger.error(f"Direct BiDi failed: {e}")
+                logger.error(f"Simple BiDi failed: {e}")
                 bidi_line = line
             
             # Apply justification only to full lines (not last line of paragraph)
