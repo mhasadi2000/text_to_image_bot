@@ -358,8 +358,6 @@ def create_text_image(text: str) -> list:
             
             # DIRECT FIX: Apply BiDi processing directly without any interference
             try:
-                import arabic_reshaper
-                from bidi.algorithm import get_display
                 reshaped = arabic_reshaper.reshape(line)
                 bidi_line = get_display(reshaped)
                 logger.info(f"Direct BiDi: '{line}' -> '{bidi_line}'")
