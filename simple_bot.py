@@ -290,8 +290,8 @@ def create_text_image(text: str) -> list:
         if img.mode != 'RGBA':
             img = img.convert('RGBA')
             
-        # Add a semi-transparent white overlay to improve text readability
-        overlay = Image.new('RGBA', img.size, (255, 255, 255, 100))  # White with alpha=100
+        # Add a very light semi-transparent white overlay to improve text readability
+        overlay = Image.new('RGBA', img.size, (255, 255, 255, 30))  # White with alpha=30 (much lighter)
         img = Image.alpha_composite(img, overlay)
         
         # Calculate text block height
