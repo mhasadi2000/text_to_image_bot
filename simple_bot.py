@@ -384,10 +384,19 @@ def create_text_image(text: str) -> list:
                 logger.error(f"RTL processing failed: {e}")
                 bidi_line = line
             
-            # Use bold font for first line, same size as other lines
+            # Use bold font for first line, increase size if line is short
             if img_index == 0 and line_idx == 0:
-                # Use bold font with same size
-                bold_font = get_font(font.size, bold=True)
+                # Check if first line is shorter than full line width
+                test_line_width = img_draw.textlength(bidi_line, font=font)
+                available_width = width - left_padding - right_padding
+                
+                if test_line_width < available_width * 0.8:  # If line uses less than 80% of available width
+                    # Use larger font size (+10)
+                    larger_font_size = font.size + 10
+                    bold_font = get_font(larger_font_size, bold=True)
+                else:
+                    # Use same size as other lines
+                    bold_font = get_font(font.size, bold=True)
                 current_font = bold_font
             else:
                 current_font = font
