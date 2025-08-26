@@ -44,7 +44,7 @@ FALLBACK_FONT_PATHS = [
     "C:/Windows/Fonts/arial.ttf"  # Windows fallback
 ]
 DATE_FONT_SIZE = 70  # Font size for Jalali date (increased by +10)
-FIRST_LINE_SIZE_INCREASE = 1.2  # Increase first line font size by 20%
+FIRST_LINE_BOLD_FONT = "fonts/vazirmatn-bold.ttf"  # Bold font for first line
 
 # Persian/Arabic numerals mapping
 PERSIAN_DIGITS = {'0': '۰', '1': '۱', '2': '۲', '3': '۳', '4': '۴', '5': '۵', '6': '۶', '7': '۷', '8': '۸', '9': '۹'}
@@ -52,32 +52,37 @@ PERSIAN_DIGITS = {'0': '۰', '1': '۱', '2': '۲', '3': '۳', '4': '۴', '5': '�
 # Telegram Bot API URL
 API_BASE_URL = "https://api.telegram.org/bot"
 
-def get_font(size):
+def get_font(size, bold=False):
     """Get a font with fallback options, prioritizing Arabic/Persian support.
     
     Args:
         size: Font size
+        bold: Whether to use bold font
         
     Returns:
-        ImageFont object
+        Font object
     """
+    if bold:
+        # Try to load the bold font first
+        try:
+            if os.path.exists(FIRST_LINE_BOLD_FONT):
+                return ImageFont.truetype(FIRST_LINE_BOLD_FONT, size)
+        except (IOError, OSError):
+            pass
+    
     for font_path in FALLBACK_FONT_PATHS:
         try:
             if os.path.exists(font_path):
-                font = ImageFont.truetype(font_path, size)
-                logger.info(f"Successfully loaded font: {font_path}")
-                return font
-        except Exception as e:
-            logger.warning(f"Could not load font {font_path}: {e}")
+                return ImageFont.truetype(font_path, size)
+        except (IOError, OSError):
             continue
     
-    # Final fallback to default font
+    # If no font found, use default
     try:
-        logger.warning("Using default font - Arabic/Persian text may not render correctly")
         return ImageFont.load_default()
     except Exception as e:
-        logger.error(f"Could not load any font: {e}")
-        raise
+        logger.warning(f"Using default font - Arabic/Persian text may not render correctly: {e}")
+        return ImageFont.load_default()
 
 def convert_to_persian_numerals(text):
     """Convert Western numerals in text to Persian/Arabic numerals.
@@ -218,11 +223,11 @@ def create_text_image(text: str) -> list:
     
     font = get_font(font_size)
     
-    # Calculate padding as 10% of image dimensions
-    right_padding = int(width * 0.1)  # 10% of width for right padding
-    left_padding = int(width * 0.1)  # 10% of width for left padding
-    top_padding = int(height * 0.25)  # 10% of height for top padding
-    bottom_padding = int(height * 0.15)  # 10% of height for bottom padding
+    # Calculate padding as 0.1 of image dimensions
+    right_padding = int(width * 0.1)  # 0.1 of width for right padding
+    left_padding = int(width * 0.1)  # 0.1 of width for left padding
+    top_padding = int(height * 0.25)  # Keep top padding for header space
+    bottom_padding = int(height * 0.15)  # Keep bottom padding
     
     # Calculate text width and height for wrapping
     max_text_width = width - (right_padding + left_padding)
@@ -379,55 +384,35 @@ def create_text_image(text: str) -> list:
                 logger.error(f"RTL processing failed: {e}")
                 bidi_line = line
             
-            # Handle first line with larger font separately to ensure proper fitting
+            # Use bold font for first line, same size as other lines
             if img_index == 0 and line_idx == 0:
-                # Make first line bolder by using larger font size
-                larger_font_size = int(font.size * FIRST_LINE_SIZE_INCREASE)
-                bold_font = get_font(larger_font_size)
-                
-                # Apply justification for first line with bold font to fit within boundaries
-                if not current_line_info.get('is_last_in_paragraph', True) and len(current_line_info.get('words', [])) > 1:
-                    justified_width = width - left_padding - right_padding
-                    words = bidi_line.split()
-                    if len(words) > 1:
-                        bidi_line = justify_line(words, bold_font, justified_width, img_draw)
-                
-                # Position first line with same padding as other lines
-                bold_line_width = img_draw.textlength(bidi_line, font=bold_font)
-                
-                # If justified, align to left padding; otherwise align to right
-                if not current_line_info.get('is_last_in_paragraph', True) and len(current_line_info.get('words', [])) > 1:
-                    # Justified text starts from left padding
-                    bold_x_position = left_padding
-                else:
-                    # Non-justified text aligns to right
-                    bold_x_position = width - right_padding - bold_line_width
-                    if bold_x_position < left_padding:
-                        bold_x_position = left_padding
-                    
-                img_draw.text((bold_x_position, current_y), bidi_line, font=bold_font, fill=(0, 0, 0))
+                # Use bold font with same size
+                bold_font = get_font(font.size, bold=True)
+                current_font = bold_font
             else:
-                # Apply justification for other lines
-                if not current_line_info.get('is_last_in_paragraph', True) and len(current_line_info.get('words', [])) > 1:
-                    justified_width = width - left_padding - right_padding
-                    words = bidi_line.split()
-                    if len(words) > 1:
-                        bidi_line = justify_line(words, font, justified_width, img_draw)
-                
-                # Position other lines
-                line_width = img_draw.textlength(bidi_line, font=font)
-                
-                # If justified, align to left padding; otherwise align to right
-                if not current_line_info.get('is_last_in_paragraph', True) and len(current_line_info.get('words', [])) > 1:
-                    # Justified text starts from left padding
+                current_font = font
+            
+            # Apply justification for all lines
+            if not current_line_info.get('is_last_in_paragraph', True) and len(current_line_info.get('words', [])) > 1:
+                justified_width = width - left_padding - right_padding
+                words = bidi_line.split()
+                if len(words) > 1:
+                    bidi_line = justify_line(words, current_font, justified_width, img_draw)
+            
+            # Position all lines consistently
+            line_width = img_draw.textlength(bidi_line, font=current_font)
+            
+            # If justified, align to left padding; otherwise align to right
+            if not current_line_info.get('is_last_in_paragraph', True) and len(current_line_info.get('words', [])) > 1:
+                # Justified text starts from left padding
+                x_position = left_padding
+            else:
+                # Non-justified text aligns to right
+                x_position = width - right_padding - line_width
+                if x_position < left_padding:
                     x_position = left_padding
-                else:
-                    # Non-justified text aligns to right
-                    x_position = width - right_padding - line_width
-                    if x_position < left_padding:
-                        x_position = left_padding
-                
-                img_draw.text((x_position, current_y), bidi_line, font=font, fill=(0, 0, 0))
+            
+            img_draw.text((x_position, current_y), bidi_line, font=current_font, fill=(0, 0, 0))
             current_y += line_height
         
         # Save this image
