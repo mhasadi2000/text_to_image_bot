@@ -379,48 +379,54 @@ def create_text_image(text: str) -> list:
                 logger.error(f"RTL processing failed: {e}")
                 bidi_line = line
             
-            # Apply justification only to full lines (not last line of paragraph)
-            if not current_line_info.get('is_last_in_paragraph', True) and len(current_line_info.get('words', [])) > 1:
-                # Apply justification for RTL text
-                justified_width = width - left_padding - right_padding
-                words = bidi_line.split()
-                if len(words) > 1:
-                    bidi_line = justify_line(words, font, justified_width, img_draw)
-            
-            # Always use right alignment for RTL text
-            # Get the width of the line
-            line_width = img_draw.textlength(bidi_line, font=font)
-            
-            # For right-to-left text, we start from the right edge minus padding
-            x_position = width - right_padding - line_width
-            
-            # Ensure text stays within the justified boundaries
-            if x_position < left_padding:
-                x_position = left_padding
-            
-            # Draw the text on the actual image - make first line bolder by using larger font size
+            # Handle first line with larger font separately to ensure proper fitting
             if img_index == 0 and line_idx == 0:
                 # Make first line bolder by using larger font size
                 larger_font_size = int(font.size * FIRST_LINE_SIZE_INCREASE)
                 bold_font = get_font(larger_font_size)
                 
-                # Apply justification for first line with bold font if needed
+                # Apply justification for first line with bold font to fit within boundaries
                 if not current_line_info.get('is_last_in_paragraph', True) and len(current_line_info.get('words', [])) > 1:
                     justified_width = width - left_padding - right_padding
                     words = bidi_line.split()
                     if len(words) > 1:
                         bidi_line = justify_line(words, bold_font, justified_width, img_draw)
                 
-                # Recalculate position to maintain consistent right padding
+                # Position first line with same padding as other lines
                 bold_line_width = img_draw.textlength(bidi_line, font=bold_font)
-                bold_x_position = width - right_padding - bold_line_width
                 
-                # Ensure text stays within the justified boundaries
-                if bold_x_position < left_padding:
+                # If justified, align to left padding; otherwise align to right
+                if not current_line_info.get('is_last_in_paragraph', True) and len(current_line_info.get('words', [])) > 1:
+                    # Justified text starts from left padding
                     bold_x_position = left_padding
+                else:
+                    # Non-justified text aligns to right
+                    bold_x_position = width - right_padding - bold_line_width
+                    if bold_x_position < left_padding:
+                        bold_x_position = left_padding
                     
                 img_draw.text((bold_x_position, current_y), bidi_line, font=bold_font, fill=(0, 0, 0))
             else:
+                # Apply justification for other lines
+                if not current_line_info.get('is_last_in_paragraph', True) and len(current_line_info.get('words', [])) > 1:
+                    justified_width = width - left_padding - right_padding
+                    words = bidi_line.split()
+                    if len(words) > 1:
+                        bidi_line = justify_line(words, font, justified_width, img_draw)
+                
+                # Position other lines
+                line_width = img_draw.textlength(bidi_line, font=font)
+                
+                # If justified, align to left padding; otherwise align to right
+                if not current_line_info.get('is_last_in_paragraph', True) and len(current_line_info.get('words', [])) > 1:
+                    # Justified text starts from left padding
+                    x_position = left_padding
+                else:
+                    # Non-justified text aligns to right
+                    x_position = width - right_padding - line_width
+                    if x_position < left_padding:
+                        x_position = left_padding
+                
                 img_draw.text((x_position, current_y), bidi_line, font=font, fill=(0, 0, 0))
             current_y += line_height
         
