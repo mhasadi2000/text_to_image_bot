@@ -404,6 +404,13 @@ def create_text_image(text: str) -> list:
                 larger_font_size = int(font.size * FIRST_LINE_SIZE_INCREASE)
                 bold_font = get_font(larger_font_size)
                 
+                # Apply justification for first line with bold font if needed
+                if not current_line_info.get('is_last_in_paragraph', True) and len(current_line_info.get('words', [])) > 1:
+                    justified_width = width - left_padding - right_padding
+                    words = bidi_line.split()
+                    if len(words) > 1:
+                        bidi_line = justify_line(words, bold_font, justified_width, img_draw)
+                
                 # Recalculate position to maintain consistent right padding
                 bold_line_width = img_draw.textlength(bidi_line, font=bold_font)
                 bold_x_position = width - right_padding - bold_line_width
