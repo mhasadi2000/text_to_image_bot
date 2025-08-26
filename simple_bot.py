@@ -43,7 +43,7 @@ FALLBACK_FONT_PATHS = [
     "/System/Library/Fonts/Arial.ttf",  # macOS fallback
     "C:/Windows/Fonts/arial.ttf"  # Windows fallback
 ]
-DATE_FONT_SIZE = 60  # Font size for Jalali date (increased)
+DATE_FONT_SIZE = 70  # Font size for Jalali date (increased by +10)
 FIRST_LINE_SIZE_INCREASE = 1.2  # Increase first line font size by 20%
 
 # Persian/Arabic numerals mapping
@@ -134,8 +134,8 @@ def justify_line(words, font, target_width, draw_obj):
     if len(words) <= 1:
         return ' '.join(words)
     
-    # Calculate the width of words without extra spaces
-    words_width = sum(draw_obj.textlength(get_display(arabic_reshaper.reshape(word)), font) for word in words)
+    # Calculate the width of words without extra spaces (simplified for RTL)
+    words_width = sum(draw_obj.textlength(word, font) for word in words)
     
     # Calculate the width of normal spaces between words
     normal_spaces_width = (len(words) - 1) * draw_obj.textlength(' ', font)
@@ -381,9 +381,11 @@ def create_text_image(text: str) -> list:
             
             # Apply justification only to full lines (not last line of paragraph)
             if not current_line_info.get('is_last_in_paragraph', True) and len(current_line_info.get('words', [])) > 1:
-                # For justified text in RTL, still align to right but distribute spaces
-                # Note: We skip justification for Arabic text to preserve RTL direction
-                pass
+                # Apply justification for RTL text
+                justified_width = width - left_padding - right_padding
+                words = bidi_line.split()
+                if len(words) > 1:
+                    bidi_line = justify_line(words, font, justified_width, img_draw)
             
             # Always use right alignment for RTL text
             # Get the width of the line
