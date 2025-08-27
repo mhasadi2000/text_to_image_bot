@@ -27,8 +27,8 @@ DEFAULT_FONT_SIZE = 90  # Increased default font size
 MIN_FONT_SIZE = 80  # Increased minimum font size as requested
 MAX_FONT_SIZE = 110  # Increased maximum font size as requested
 MAX_LINES_PER_IMAGE = 25  # Reduced to account for larger font size
-MAX_IMAGES = 3  # Maximum number of images to generate
-MAX_WORDS = 400  # Maximum number of words allowed
+MAX_IMAGES = 4  # Maximum number of images to generate
+MAX_WORDS = 700  # Maximum number of words allowed
 # Padding will be calculated as 10% of image dimensions with priority to top and right
 # Use the Vazirmatn font for Arabic/Persian characters
 FONT_PATH = "fonts/Vazirmatn-Regular.ttf"  # Persian font
@@ -51,6 +51,9 @@ PERSIAN_DIGITS = {'0': '۰', '1': '۱', '2': '۲', '3': '۳', '4': '۴', '5': '�
 
 # Telegram Bot API URL
 API_BASE_URL = "https://api.telegram.org/bot"
+
+# User state management for two-step input
+user_states = {}  # Dictionary to store user states: {chat_id: {'step': 'waiting_title'|'waiting_text', 'title': str}}
 
 def get_font(size, bold=False):
     """Get a font with fallback options, prioritizing Arabic/Persian support.
@@ -176,17 +179,75 @@ def justify_line(words, font, target_width, draw_obj):
     # Fallback to normal spacing if calculation fails
     return ' '.join(words)
 
-def create_text_image(text: str) -> list:
-    """Create image(s) with the given text and return the path(s) to the image(s).
+def parse_title_and_text(input_text: str) -> tuple:
+    """Parse input text to separate title from body text.
     
     Args:
-        text: The text to place on the image
+        input_text: The full input text
+        
+    Returns:
+        Tuple of (title, body_text)
+    """
+    lines = input_text.strip().split('\n')
+    if len(lines) == 0:
+        return "", ""
+    
+    # First non-empty line is the title
+    title = lines[0].strip()
+    
+    # Rest is body text, join with newlines
+    body_lines = lines[1:] if len(lines) > 1 else []
+    body_text = '\n'.join(body_lines).strip()
+    
+    return title, body_text
+
+def add_paragraph_indentation(text: str) -> str:
+    """Add indentation to the beginning of each paragraph.
+    
+    Args:
+        text: The body text
+        
+    Returns:
+        Text with paragraph indentation
+    """
+    if not text:
+        return text
+    
+    # Split by double newlines to identify paragraphs
+    paragraphs = text.split('\n\n')
+    indented_paragraphs = []
+    
+    for paragraph in paragraphs:
+        if paragraph.strip():
+            # Add indentation (4 spaces) to the beginning of each paragraph
+            indented_paragraph = '    ' + paragraph.strip()
+            indented_paragraphs.append(indented_paragraph)
+        else:
+            indented_paragraphs.append(paragraph)
+    
+    return '\n\n'.join(indented_paragraphs)
+
+def create_text_image(title: str, text: str) -> list:
+    """Create image(s) with the given title and text and return the path(s) to the image(s).
+    
+    Args:
+        title: The title text
+        text: The body text
         
     Returns:
         List of paths to generated images or empty list if error
     """
+    # Add paragraph indentation to body text
+    body_text = text
+    if body_text:
+        body_text = add_paragraph_indentation(body_text)
+    
+    # Combine title and body for processing
+    full_text = title
+    if body_text:
+        full_text += '\n\n' + body_text
     # Reshape Arabic/Persian text
-    reshaped_text = arabic_reshaper.reshape(text)
+    reshaped_text = arabic_reshaper.reshape(full_text)
     bidi_text = get_display(reshaped_text)
     
     # Use only image_1.jpg as the background image
@@ -210,8 +271,8 @@ def create_text_image(text: str) -> list:
     draw = ImageDraw.Draw(temp_img)
     
     # Adjust font size based on text length
-    text_length = len(text)
-    word_count = len(text.split())
+    text_length = len(full_text)
+    word_count = len(full_text.split())
     
     if word_count < 100:
         font_size = MAX_FONT_SIZE  # 14pt for shorter texts
@@ -233,52 +294,77 @@ def create_text_image(text: str) -> list:
     max_text_width = width - (right_padding + left_padding)
     
     # Function to wrap text and calculate total height with justification and preserved whitespace
-    def get_wrapped_text_and_height(text, font, max_width):
+    def get_wrapped_text_and_height(text, font, title_font, max_width):
         lines = []
         line_info = []  # Store additional info about each line for justification
-        # Split by newlines first to preserve intentional line breaks
-        paragraphs = text.split('\n')
         
-        for paragraph_idx, paragraph in enumerate(paragraphs):
-            if not paragraph.strip():  # Preserve empty lines
-                lines.append('')
-                line_info.append({'is_empty': True, 'is_last_in_paragraph': True})
-                continue
-                
-            words = paragraph.split(' ')
-            current_line_words = [words[0]] if words else []
+        # Parse title and body from combined text
+        title_part, body_part = parse_title_and_text(text)
+        
+        # Process title first if it exists
+        if title_part:
+            lines.append(title_part)
+            line_info.append({'is_empty': False, 'is_title': True, 'is_last_in_paragraph': True, 'words': title_part.split()})
             
-            for word in words[1:]:
-                # Try adding the word to the current line
-                test_line = ' '.join(current_line_words + [word])
-                # For RTL text, we need to measure each line with proper Arabic processing
-                processed_test_line = process_arabic_text(test_line)
-                test_width = draw.textlength(processed_test_line, font)
+            # Add empty line after title
+            lines.append('')
+            line_info.append({'is_empty': True, 'is_title': False, 'is_last_in_paragraph': True})
+        
+        # Process body text if it exists
+        if body_part:
+            # Split by newlines first to preserve intentional line breaks
+            paragraphs = body_part.split('\n')
+        
+            for paragraph_idx, paragraph in enumerate(paragraphs):
+                if not paragraph.strip():  # Preserve empty lines
+                    lines.append('')
+                    line_info.append({'is_empty': True, 'is_title': False, 'is_last_in_paragraph': True})
+                    continue
+                    
+                words = paragraph.split(' ')
+                current_line_words = [words[0]] if words else []
                 
-                if test_width <= max_width:
-                    current_line_words.append(word)
-                else:
-                    # Add the current line to lines
+                for word in words[1:]:
+                    # Try adding the word to the current line
+                    test_line = ' '.join(current_line_words + [word])
+                    # For RTL text, we need to measure each line with proper Arabic processing
+                    processed_test_line = process_arabic_text(test_line)
+                    test_width = draw.textlength(processed_test_line, font)
+                    
+                    if test_width <= max_width:
+                        current_line_words.append(word)
+                    else:
+                        # Add the current line to lines
+                        lines.append(' '.join(current_line_words))
+                        line_info.append({
+                            'is_empty': False,
+                            'is_title': False,
+                            'is_last_in_paragraph': False,
+                            'words': current_line_words.copy()
+                        })
+                        current_line_words = [word]
+                
+                # Add the last line of this paragraph
+                if current_line_words:
                     lines.append(' '.join(current_line_words))
                     line_info.append({
-                        'is_empty': False, 
-                        'is_last_in_paragraph': False,
+                        'is_empty': False,
+                        'is_title': False,
+                        'is_last_in_paragraph': True,
                         'words': current_line_words.copy()
                     })
-                    current_line_words = [word]
-            
-            # Add the last line of this paragraph
-            if current_line_words:
-                lines.append(' '.join(current_line_words))
-                line_info.append({
-                    'is_empty': False, 
-                    'is_last_in_paragraph': True,
-                    'words': current_line_words.copy()
-                })
         
         # Calculate line height and total text height
         line_height = int(font.size * 1.5)  # Add some spacing between lines
-        total_text_height = len(lines) * line_height
+        title_line_height = int(title_font.size * 1.5) if title_part else line_height
+        
+        # Calculate total height considering title uses different line height
+        total_text_height = 0
+        for i, line_inf in enumerate(line_info):
+            if line_inf.get('is_title', False):
+                total_text_height += title_line_height
+            else:
+                total_text_height += line_height
         
         return lines, total_text_height, line_height, line_info
     
@@ -286,7 +372,9 @@ def create_text_image(text: str) -> list:
     wrapped_lines = []
     while font_size > MIN_FONT_SIZE:
         font = get_font(font_size)
-        wrapped_lines, total_text_height, line_height, line_info = get_wrapped_text_and_height(text, font, max_text_width)
+        title_font_size = int(font_size * 1.2)  # Title is 1.2x the body font size
+        title_font = get_font(title_font_size, bold=True)
+        wrapped_lines, total_text_height, line_height, line_info = get_wrapped_text_and_height(full_text, font, title_font, max_text_width)
         
         # Check if text can fit in MAX_IMAGES images
         max_text_height_per_image = height - (top_padding + bottom_padding)  # Use height with calculated padding
@@ -300,7 +388,9 @@ def create_text_image(text: str) -> list:
     # If even with minimum font size, text doesn't fit in MAX_IMAGES images, return error
     if font_size <= MIN_FONT_SIZE:
         font = get_font(MIN_FONT_SIZE)
-        wrapped_lines, total_text_height, line_height, line_info = get_wrapped_text_and_height(text, font, max_text_width)
+        title_font_size = int(MIN_FONT_SIZE * 1.2)
+        title_font = get_font(title_font_size, bold=True)
+        wrapped_lines, total_text_height, line_height, line_info = get_wrapped_text_and_height(full_text, font, title_font, max_text_width)
         max_text_height_per_image = height - (top_padding + bottom_padding)
         total_images_needed = (total_text_height + max_text_height_per_image - 1) // max_text_height_per_image
         
@@ -384,45 +474,58 @@ def create_text_image(text: str) -> list:
                 logger.error(f"RTL processing failed: {e}")
                 bidi_line = line
             
-            # Use bold font for first line, increase size if line is short
-            if img_index == 0 and line_idx == 0:
-                # Check if first line is shorter than full line width
-                test_line_width = img_draw.textlength(bidi_line, font=font)
-                available_width = width - left_padding - right_padding
-                
-                if test_line_width < available_width * 0.8:  # If line uses less than 80% of available width
-                    # Use larger font size (+10)
-                    larger_font_size = font.size + 10
-                    bold_font = get_font(larger_font_size, bold=True)
-                else:
-                    # Use same size as other lines
-                    bold_font = get_font(font.size, bold=True)
-                current_font = bold_font
+            # Check if this line is a title
+            if current_line_info.get('is_title', False):
+                # Use title font (1.2x size, bold)
+                title_font_size = int(font.size * 1.2)
+                current_font = get_font(title_font_size, bold=True)
             else:
                 current_font = font
             
-            # Apply justification for all lines
-            if not current_line_info.get('is_last_in_paragraph', True) and len(current_line_info.get('words', [])) > 1:
-                justified_width = width - left_padding - right_padding
-                words = bidi_line.split()
-                if len(words) > 1:
-                    bidi_line = justify_line(words, current_font, justified_width, img_draw)
-            
-            # Position all lines consistently
+            # Handle positioning based on line type
             line_width = img_draw.textlength(bidi_line, font=current_font)
             
-            # If justified, align to left padding; otherwise align to right
-            if not current_line_info.get('is_last_in_paragraph', True) and len(current_line_info.get('words', [])) > 1:
-                # Justified text starts from left padding
-                x_position = left_padding
+            if current_line_info.get('is_title', False):
+                # Title: center-aligned, but if multi-line, use same padding as other lines
+                if len([info for info in line_info if info.get('is_title', False)]) > 1:
+                    # Multi-line title: use same padding as body text
+                    if not current_line_info.get('is_last_in_paragraph', True) and len(current_line_info.get('words', [])) > 1:
+                        justified_width = width - left_padding - right_padding
+                        words = bidi_line.split()
+                        if len(words) > 1:
+                            bidi_line = justify_line(words, current_font, justified_width, img_draw)
+                        x_position = left_padding
+                    else:
+                        x_position = width - right_padding - line_width
+                        if x_position < left_padding:
+                            x_position = left_padding
+                else:
+                    # Single-line title: center-aligned
+                    x_position = (width - line_width) // 2
+                    if x_position < left_padding:
+                        x_position = left_padding
             else:
-                # Non-justified text aligns to right
-                x_position = width - right_padding - line_width
-                if x_position < left_padding:
+                # Body text: apply justification for non-last lines in paragraphs
+                if not current_line_info.get('is_last_in_paragraph', True) and len(current_line_info.get('words', [])) > 1:
+                    justified_width = width - left_padding - right_padding
+                    words = bidi_line.split()
+                    if len(words) > 1:
+                        bidi_line = justify_line(words, current_font, justified_width, img_draw)
+                    # Justified text starts from left padding
                     x_position = left_padding
+                else:
+                    # Non-justified text aligns to right
+                    x_position = width - right_padding - line_width
+                    if x_position < left_padding:
+                        x_position = left_padding
             
             img_draw.text((x_position, current_y), bidi_line, font=current_font, fill=(0, 0, 0))
-            current_y += line_height
+            
+            # Use appropriate line height based on whether it's a title or body text
+            if current_line_info.get('is_title', False):
+                current_y += int(current_font.size * 1.5)
+            else:
+                current_y += line_height
         
         # Save this image
         output_path = f"output_{img_index+1}.jpg" if len(image_lines) > 1 else "output.jpg"
@@ -453,10 +556,32 @@ def send_photo(chat_id, photo_path):
     """Send a photo to a chat."""
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     url = f"{API_BASE_URL}{token}/sendPhoto"
+    
     with open(photo_path, 'rb') as photo_file:
         files = {'photo': photo_file}
         data = {'chat_id': chat_id}
         response = requests.post(url, data=data, files=files)
+    
+    return response.json()
+
+def send_start_button(chat_id):
+    """Send a message with start button for creating new images."""
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    url = f"{API_BASE_URL}{token}/sendMessage"
+    
+    keyboard = {
+        "inline_keyboard": [[
+            {"text": "📝 Create New Image", "callback_data": "start"}
+        ]]
+    }
+    
+    data = {
+        "chat_id": chat_id,
+        "text": "✅ تصویر شما آماده شد!\n\n✅ Your image is ready!\n\nبرای ساخت تصویر جدید دکمه زیر را فشار دهید:\nClick the button below to create a new image:",
+        "reply_markup": keyboard
+    }
+    
+    response = requests.post(url, data=data)
     return response.json()
 
 def handle_message(message):
@@ -467,43 +592,69 @@ def handle_message(message):
     # Handle commands
     if text.startswith('/'):
         if text == '/start':
-            send_message(chat_id, 'سلام! متن خود را بفرستید تا آن را روی تصویر قرار دهم.\n\nHello! Send me your text and I will place it on an image.')
+            # Reset user state and ask for title
+            user_states[chat_id] = {'step': 'waiting_title'}
+            send_message(chat_id, 'سلام! لطفاً ابتدا عنوان خود را وارد کنید:\n\nHello! Please enter your title first:')
         elif text == '/help':
-            send_message(chat_id, 'متن خود را بفرستید تا آن را روی تصویر قرار دهم.\n\nSend me your text and I will place it on an image.')
+            send_message(chat_id, 'برای شروع /start را بفرستید. ابتدا عنوان، سپس متن را وارد کنید.\n\nSend /start to begin. Enter title first, then text.')
         return
     
-    # Check word count limit
-    word_count = len(text.split())
-    if word_count > MAX_WORDS:
-        send_message(chat_id, f"متن شما بیش از حد مجاز {MAX_WORDS} کلمه است. لطفاً متن کوتاه‌تری را ارسال کنید.\n\nYour text exceeds the maximum limit of {MAX_WORDS} words. Please send a shorter text.")
+    # Get user state
+    user_state = user_states.get(chat_id, {})
+    current_step = user_state.get('step')
+    
+    if current_step == 'waiting_title':
+        # User is sending the title
+        user_states[chat_id] = {'step': 'waiting_text', 'title': text}
+        send_message(chat_id, 'عنوان دریافت شد! حالا لطفاً متن خود را وارد کنید:\n\nTitle received! Now please enter your text:')
         return
     
-    # Handle text messages
-    processing_msg = send_message(chat_id, "در حال پردازش متن شما...")
-    
-    try:
-        # Create the image(s) with text
-        image_paths = create_text_image(text)
+    elif current_step == 'waiting_text':
+        # User is sending the text
+        title = user_state.get('title', '')
         
-        if not image_paths:
-            # Text is too long to fit even with minimum font size and max images
-            send_message(chat_id, "متن شما بسیار طولانی است. لطفاً متن کوتاه‌تری را ارسال کنید.\n\nYour text is too long. Please send a shorter text (maximum 2 images).")
+        # Check word count limit for the text (not including title)
+        word_count = len(text.split())
+        if word_count > MAX_WORDS:
+            send_message(chat_id, f"متن شما بیش از حد مجاز {MAX_WORDS} کلمه است. لطفاً متن کوتاه‌تری را ارسال کنید.\n\nYour text exceeds the maximum limit of {MAX_WORDS} words. Please send a shorter text.")
             return
         
-        # If there are multiple images, inform the user
-        if len(image_paths) > 1:
-            send_message(chat_id, f"متن شما در {len(image_paths)} تصویر قرار داده شده است.\n\nYour text has been placed on {len(image_paths)} images.")
+        # Reset user state
+        user_states[chat_id] = {}
         
-        # Send each image back to the user
-        for image_path in image_paths:
-            send_photo(chat_id, image_path)
+        # Handle text processing
+        processing_msg = send_message(chat_id, "در حال پردازش متن شما...")
+        
+        try:
+            # Create the image(s) with title and text
+            image_paths = create_text_image(title, text)
             
-            # Delete the temporary image file after sending
-            os.remove(image_path)
-        
-    except Exception as e:
-        logger.error(f"Error processing text: {e}")
-        send_message(chat_id, "متأسفانه در پردازش متن شما مشکلی پیش آمد. لطفاً دوباره تلاش کنید.\n\nSorry, there was an error processing your text. Please try again.")
+            if not image_paths:
+                # Text is too long to fit even with minimum font size and max images
+                send_message(chat_id, "متن شما بسیار طولانی است. لطفاً متن کوتاه‌تری را ارسال کنید.\n\nYour text is too long. Please send a shorter text (maximum 4 images).")
+                return
+            
+            # If there are multiple images, inform the user
+            if len(image_paths) > 1:
+                send_message(chat_id, f"متن شما در {len(image_paths)} تصویر قرار داده شده است.\n\nYour text has been placed on {len(image_paths)} images.")
+            
+            # Send each image back to the user
+            for image_path in image_paths:
+                send_photo(chat_id, image_path)
+                
+                # Delete the temporary image file after sending
+                os.remove(image_path)
+            
+            # Send start button after processing is complete
+            send_start_button(chat_id)
+            
+        except Exception as e:
+            logger.error(f"Error processing text: {e}")
+            send_message(chat_id, "متأسفانه در پردازش متن شما مشکلی پیش آمد. لطفاً دوباره تلاش کنید.\n\nSorry, there was an error processing your text. Please try again.")
+    
+    else:
+        # User hasn't started the process
+        send_message(chat_id, 'لطفاً ابتدا /start را بفرستید تا فرآیند را شروع کنید.\n\nPlease send /start first to begin the process.')
 
 def get_updates(offset=None):
     """Get updates from Telegram Bot API."""
@@ -544,6 +695,14 @@ def main():
                     # Process message if present
                     if 'message' in update:
                         handle_message(update['message'])
+                    # Process callback query (button press) if present
+                    elif 'callback_query' in update:
+                        callback_query = update['callback_query']
+                        chat_id = callback_query['message']['chat']['id']
+                        if callback_query['data'] == 'start':
+                            # Reset user state and ask for title
+                            user_states[chat_id] = {'step': 'waiting_title'}
+                            send_message(chat_id, 'لطفاً ابتدا عنوان خود را وارد کنید:\n\nPlease enter your title first:')
             
             # Sleep briefly to avoid hitting rate limits
             time.sleep(0.5)
