@@ -30,9 +30,10 @@ MAX_LINES_PER_IMAGE = 25  # Reduced to account for larger font size
 MAX_IMAGES = 4  # Maximum number of images to generate
 MAX_WORDS = 700  # Maximum number of words allowed
 # Padding will be calculated as 10% of image dimensions with priority to top and right
-# Use the Vazirmatn font for Arabic/Persian characters
-FONT_PATH = "fonts/Vazirmatn-Regular.ttf"  # Persian font
+# Use the w_Aramesh fonts for Arabic/Persian characters
+FONT_PATH = "fonts/w_Aramesh Medium.ttf"  # Persian font for regular text
 FALLBACK_FONT_PATHS = [
+    "fonts/w_Aramesh Medium.ttf",
     "fonts/Vazirmatn-Regular.ttf",
     "/usr/share/fonts/truetype/kacst/KacstBook.ttf",  # Arabic font
     "/usr/share/fonts/truetype/kacst-one/KacstOne.ttf",  # Arabic font
@@ -44,10 +45,13 @@ FALLBACK_FONT_PATHS = [
     "C:/Windows/Fonts/arial.ttf"  # Windows fallback
 ]
 DATE_FONT_SIZE = 70  # Font size for Jalali date (increased by +10)
-FIRST_LINE_BOLD_FONT = "fonts/vazirmatn-bold.ttf"  # Bold font for first line
+FIRST_LINE_BOLD_FONT = "fonts/w_Aramesh Extra Bold.ttf"  # Bold font for titles
 
 # Persian/Arabic numerals mapping
 PERSIAN_DIGITS = {'0': '۰', '1': '۱', '2': '۲', '3': '۳', '4': '۴', '5': '۵', '6': '۶', '7': '۷', '8': '۸', '9': '۹'}
+
+# Paragraph indentation constant
+PARAGRAPH_INDENT = "    "  # Indentation for paragraphs
 
 # Telegram Bot API URL
 API_BASE_URL = "https://api.telegram.org/bot"
@@ -219,8 +223,8 @@ def add_paragraph_indentation(text: str) -> str:
     
     for paragraph in paragraphs:
         if paragraph.strip():
-            # Add indentation (4 spaces) to the beginning of each paragraph
-            indented_paragraph = '    ' + paragraph.strip()
+            # Add indentation using the constant
+            indented_paragraph = PARAGRAPH_INDENT + paragraph.strip()
             indented_paragraphs.append(indented_paragraph)
         else:
             indented_paragraphs.append(paragraph)
@@ -303,8 +307,28 @@ def create_text_image(title: str, text: str) -> list:
         
         # Process title first if it exists
         if title_part:
-            lines.append(title_part)
-            line_info.append({'is_empty': False, 'is_title': True, 'is_last_in_paragraph': True, 'words': title_part.split()})
+            # Handle title wrapping - use 0.7 of background width
+            title_max_width = int(width * 0.7)  # 0.7 of background width
+            title_words = title_part.split()
+            current_title_line = []
+            
+            for word in title_words:
+                # Test if adding this word would exceed 0.7 of background width
+                test_line = ' '.join(current_title_line + [word])
+                test_width = draw.textlength(test_line, title_font)
+                
+                if test_width <= title_max_width or not current_title_line:
+                    current_title_line.append(word)
+                else:
+                    # Add current line and start new one
+                    lines.append(' '.join(current_title_line))
+                    line_info.append({'is_empty': False, 'is_title': True, 'is_last_in_paragraph': False, 'words': current_title_line.copy()})
+                    current_title_line = [word]
+            
+            # Add the last title line
+            if current_title_line:
+                lines.append(' '.join(current_title_line))
+                line_info.append({'is_empty': False, 'is_title': True, 'is_last_in_paragraph': True, 'words': current_title_line.copy()})
             
             # Add empty line after title
             lines.append('')
@@ -486,24 +510,16 @@ def create_text_image(title: str, text: str) -> list:
             line_width = img_draw.textlength(bidi_line, font=current_font)
             
             if current_line_info.get('is_title', False):
-                # Title: center-aligned, but if multi-line, use same padding as other lines
-                if len([info for info in line_info if info.get('is_title', False)]) > 1:
-                    # Multi-line title: use same padding as body text
-                    if not current_line_info.get('is_last_in_paragraph', True) and len(current_line_info.get('words', [])) > 1:
-                        justified_width = width - left_padding - right_padding
-                        words = bidi_line.split()
-                        if len(words) > 1:
-                            bidi_line = justify_line(words, current_font, justified_width, img_draw)
-                        x_position = left_padding
-                    else:
-                        x_position = width - right_padding - line_width
-                        if x_position < left_padding:
-                            x_position = left_padding
-                else:
-                    # Single-line title: center-aligned
-                    x_position = (width - line_width) // 2
-                    if x_position < left_padding:
-                        x_position = left_padding
+                # Title: always center-aligned, bold, font size 1.2x, with proper padding
+                # Center the title within the available text area (respecting padding)
+                available_width = width - left_padding - right_padding
+                x_position = left_padding + (available_width - line_width) // 2
+                
+                # Ensure title doesn't overflow outside text area
+                if x_position < left_padding:
+                    x_position = left_padding
+                elif x_position + line_width > width - right_padding:
+                    x_position = width - right_padding - line_width
             else:
                 # Body text: apply justification for non-last lines in paragraphs
                 if not current_line_info.get('is_last_in_paragraph', True) and len(current_line_info.get('words', [])) > 1:
