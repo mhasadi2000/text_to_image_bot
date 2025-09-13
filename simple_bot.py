@@ -51,7 +51,7 @@ FIRST_LINE_BOLD_FONT = "fonts/w_Aramesh Extra Bold.ttf"  # Bold font for titles
 PERSIAN_DIGITS = {'0': '۰', '1': '۱', '2': '۲', '3': '۳', '4': '۴', '5': '۵', '6': '۶', '7': '۷', '8': '۸', '9': '۹'}
 
 # Paragraph indentation constant
-PARAGRAPH_INDENT = "    "  # Two non-breaking spaces (NBSP: U+00A0) for paragraph indentation
+PARAGRAPH_INDENT = "        "  # Two non-breaking spaces (NBSP: U+00A0) for paragraph indentation
 
 # Telegram Bot API URL
 API_BASE_URL = "https://api.telegram.org/bot"
@@ -238,7 +238,7 @@ def add_paragraph_indentation(text: str) -> str:
     for i, paragraph in enumerate(paragraphs):
         if paragraph.strip():  # Only indent non-empty paragraphs
             # Add exactly four spaces at the beginning of each paragraph
-            indented_paragraph = "    " + paragraph
+            indented_paragraph = "        " + paragraph
             indented_paragraphs.append(indented_paragraph)
         else:
             # Preserve empty paragraphs as-is
@@ -551,7 +551,7 @@ def create_text_image(title: str, text: str) -> list:
                 # Calculate RTL indentation width (equivalent to 4 spaces for visibility)
                 indent_width = 0
                 if is_first_line_of_paragraph:
-                    indent_width = img_draw.textlength('    ', current_font)  # 4 spaces width
+                    indent_width = img_draw.textlength('        ', current_font)  # 4 spaces width
                     logger.info(f"RTL indentation applied: line {global_line_idx}, indent_width={indent_width}px")
                 
                 # Body text: apply justification for non-last lines in paragraphs
