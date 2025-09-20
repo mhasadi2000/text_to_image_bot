@@ -217,35 +217,50 @@ def parse_title_and_text(input_text: str) -> tuple:
 def add_paragraph_indentation(text: str) -> str:
     """Add indentation to the beginning of each paragraph.
     
-    A paragraph is defined as a block of text separated by one or more newline characters.
-    Inserts exactly four spaces ("    ") at the very beginning of each paragraph string.
-    Preserves all existing whitespace characters (spaces, tabs, newlines) exactly as they are.
+    A paragraph is defined as a block of text separated by double newlines (\n\n).
+    Uses half-space (ZWNJ) + 4 spaces for RTL paragraph indentation.
+    Preserves all existing whitespace characters (spaces, tabs, single newlines) exactly as they are.
     
     Args:
         text: The body text
         
     Returns:
-        Text with paragraph indentation using four spaces at the start of each paragraph
+        Text with paragraph indentation using half-space + 4 spaces at the start of each paragraph
     """
     if not text:
         return text
     
-    # Split text into paragraphs by one or more newlines
-    import re
-    paragraphs = re.split(r'\n+', text)
+    # Split text into paragraphs by double newlines (actual paragraph separators)
+    paragraphs = text.split('\n\n')
     indented_paragraphs = []
     
     for i, paragraph in enumerate(paragraphs):
         if paragraph.strip():  # Only indent non-empty paragraphs
-            # Add exactly four spaces at the beginning of each paragraph
-            indented_paragraph = "        " + paragraph
-            indented_paragraphs.append(indented_paragraph)
+            # Preserve existing leading whitespace and add half-space + 4 spaces
+            lines = paragraph.split('\n')
+            if lines:
+                # Add indentation to the first line of the paragraph only
+                first_line = lines[0]
+                # Preserve any existing leading whitespace
+                leading_whitespace = ''
+                stripped_first_line = first_line.lstrip()
+                if len(first_line) > len(stripped_first_line):
+                    leading_whitespace = first_line[:len(first_line) - len(stripped_first_line)]
+                
+                # Add half-space (ZWNJ: U+200C) + 4 spaces for RTL indentation
+                indented_first_line = leading_whitespace + "\u200C    " + stripped_first_line
+                lines[0] = indented_first_line
+                
+                indented_paragraph = '\n'.join(lines)
+                indented_paragraphs.append(indented_paragraph)
+            else:
+                indented_paragraphs.append(paragraph)
         else:
             # Preserve empty paragraphs as-is
             indented_paragraphs.append(paragraph)
     
-    # Merge paragraphs back together with single newlines
-    return '\n'.join(indented_paragraphs)
+    # Merge paragraphs back together with double newlines
+    return '\n\n'.join(indented_paragraphs)
 
 def create_text_image(title: str, text: str) -> list:
     """Create image(s) with the given title and text and return the path(s) to the image(s).
@@ -305,7 +320,7 @@ def create_text_image(title: str, text: str) -> list:
     # Calculate padding as 0.1 of image dimensions
     right_padding = int(width * 0.1)  # 0.1 of width for right padding
     left_padding = int(width * 0.1)  # 0.1 of width for left padding
-    top_padding = int(height * 0.25)  # Keep top padding for header space
+    top_padding = int(height * 0.22)  # Keep top padding for header space
     bottom_padding = int(height * 0.2)  # Keep bottom padding
     
     # Calculate text width and height for wrapping
@@ -350,6 +365,8 @@ def create_text_image(title: str, text: str) -> list:
         
         # Process body text if it exists
         if body_part:
+            # Apply paragraph indentation first
+            body_part = add_paragraph_indentation(body_part)
             # Split by newlines first to preserve intentional line breaks
             paragraphs = body_part.split('\n')
         
@@ -538,20 +555,27 @@ def create_text_image(title: str, text: str) -> list:
                 # Check if this is the first line of a paragraph for RTL right-side indentation
                 is_first_line_of_paragraph = False
                 if (not current_line_info.get('is_title', False) and 
-                    not current_line_info.get('is_empty', False) and
-                    global_line_idx > 0):
+                    not current_line_info.get('is_empty', False)):
                     
-                    # Check if previous line was empty (indicating start of new paragraph)
-                    prev_line_info = line_info[global_line_idx - 1] if global_line_idx > 0 else None
-                    is_first_line_of_paragraph = (
-                        prev_line_info and prev_line_info.get('is_empty', False) or
-                        (prev_line_info and prev_line_info.get('is_title', False))  # First body line after title
-                    )
+                    # Check if this line starts with the indentation marker (half-space + 4 spaces)
+                    # This indicates it's the first line of a paragraph
+                    is_first_line_of_paragraph = bidi_line.startswith('\u200C    ')
+                    
+                    # Also check traditional paragraph detection methods as fallback
+                    if not is_first_line_of_paragraph and global_line_idx > 0:
+                        prev_line_info = line_info[global_line_idx - 1] if global_line_idx > 0 else None
+                        is_first_line_of_paragraph = (
+                            prev_line_info and prev_line_info.get('is_empty', False) or
+                            (prev_line_info and prev_line_info.get('is_title', False))  # First body line after title
+                        )
                 
-                # Calculate RTL indentation width (equivalent to 4 spaces for visibility)
+                # Calculate RTL indentation width using half-space + 4 spaces
                 indent_width = 0
                 if is_first_line_of_paragraph:
-                    indent_width = img_draw.textlength('        ', current_font)  # 4 spaces width
+                    indent_width = img_draw.textlength('\u200C    ', current_font)  # half-space + 4 spaces width
+                    # Remove the indentation marker from the text for display
+                    if bidi_line.startswith('\u200C    '):
+                        bidi_line = bidi_line[5:]  # Remove half-space + 4 spaces
                     logger.info(f"RTL indentation applied: line {global_line_idx}, indent_width={indent_width}px")
                 
                 # Body text: apply justification for non-last lines in paragraphs
